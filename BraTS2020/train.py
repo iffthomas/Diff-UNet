@@ -13,24 +13,27 @@ from unet.basic_unet import BasicUNetEncoder
 import argparse
 from monai.losses.dice import DiceLoss
 import yaml
+from pathlib import Path
 from guided_diffusion.gaussian_diffusion import get_named_beta_schedule, ModelMeanType, ModelVarType,LossType
 from guided_diffusion.respace import SpacedDiffusion, space_timesteps
 from guided_diffusion.resample import UniformSampler
 set_determinism(123)
 import os
+os.chdir(Path(__file__).resolve().parent)
 
 data_dir = "./datasets/brats2020/MICCAI_BraTS2020_TrainingData/"
 logdir = "./logs_brats/diffusion_seg_all_loss_embed/"
 
 model_save_path = os.path.join(logdir, "model")
 
-env = "DDP" # or env = "pytorch" if you only have one gpu.
+env = "pytorch" # or env = "pytorch" if you only have one gpu.
 
 max_epoch = 300
 batch_size = 2
 val_every = 10
-num_gpus = 4
-device = "cuda:0"
+num_gpus = 0
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 number_modality = 4
 number_targets = 3 ## WT, TC, ET
@@ -77,7 +80,8 @@ class DiffUNet(nn.Module):
             sample_out = sample_out["pred_xstart"]
             return sample_out
 
-class BraTSTrainer(Trainer):
+class BraTSTrainer(Trainer): #Implemeents the custom training loop for the BraTS dataset
+      #at __init__ we specify what is important like the model, the optimizer, the loss and the noise scheduler
     def __init__(self, env_type, max_epochs, batch_size, device="cpu", val_every=1, num_gpus=1, logdir="./logs/", master_ip='localhost', master_port=17750, training_script="train.py"):
         super().__init__(env_type, max_epochs, batch_size, device, val_every, num_gpus, logdir, master_ip, master_port, training_script)
         self.window_infer = SlidingWindowInferer(roi_size=[96, 96, 96],
@@ -96,8 +100,12 @@ class BraTSTrainer(Trainer):
         self.bce = nn.BCEWithLogitsLoss()
         self.dice_loss = DiceLoss(sigmoid=True)
 
+    
+    #herer we define the training step that is performed at each iteration! we get the batch of data here our diffusion process takes place!
     def training_step(self, batch):
         image, label = self.get_input(batch)
+
+        #we take our label mask, from batch["label"] that has shape (1,depth,height,widht) i guess
         x_start = label
 
         x_start = (x_start) * 2 - 1
@@ -173,7 +181,7 @@ class BraTSTrainer(Trainer):
 
 if __name__ == "__main__":
 
-    train_ds, val_ds, test_ds = get_loader_brats(data_dir=data_dir, batch_size=batch_size, fold=0)
+    train_ds, val_ds, test_ds = get_loader_brats(data_dir=Path(data_dir), batch_size=batch_size, fold=0)
     
     trainer = BraTSTrainer(env_type=env,
                             max_epochs=max_epoch,
