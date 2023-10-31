@@ -66,11 +66,17 @@ class DiffUNet(nn.Module):
     def forward(self, image=None, x=None, pred_type=None, step=None):
         if pred_type == "q_sample":
             noise = torch.randn_like(x).to(x.device)
+            #get a timestep t and the probabity of this timestep sampler.sample calculates this probability distribution and samples from it
             t, weight = self.sampler.sample(x.shape[0], x.device)
+            
+            #now we sample the noisey image and retrun noisy image, timestep t and the noise that was added
+            #in q_sample 
             return self.diffusion.q_sample(x, t, noise=noise), t, noise
 
         elif pred_type == "denoise":
+            #gets all embedingt of each convolutional layer block in total we have 5 embedding layers [x0,x1,x2,x3,x4]
             embeddings = self.embed_model(image)
+
             return self.model(x, t=step, image=image, embeddings=embeddings)
 
         elif pred_type == "ddim_sample":
@@ -108,10 +114,36 @@ class BraTSTrainer(Trainer): #Implemeents the custom training loop for the BraTS
         #we take our label mask, from batch["label"] that has shape (1,depth,height,widht) i guess
         x_start = label
 
-        x_start = (x_start) * 2 - 1
+        x_start = (x_start) * 2 - 1 #why are we doing this exactly when labels are only 0 or 1 ??
+        #we rerange the labels: either -1 or 1 for the mask values.
+
+
+        #this is where the sampling 
+        #1, we sample with UniformSampler(1000), this initializes the weights
+        #2 we use the sample function of the schedulesampler abc class: we get the probability distribution with probability = weight / sum(weights)
+        #since all weight are the same --> all probabilites are the same
+        #3 we select a random timepoint: with indices_np = np.random.choice(len(p), size=(batch_size,), p=p) according to our probability distribution p
+        #4 we use the function q_sample. Here a lot happens
+            #4.1 we first calculate our beta schedule. this is how much variance noise we add for each timestep t,
+            #4.2 we calulculate the sqrt_alphas_cumprod multiply it with x_start
+            #add sqrt_one_minus_alphas_cumprod and multiply it with the noise
+            #now we have our q_sample
+            #with shape: batchsize, channels_labels, depth, height, width
+        #5 we have our x_t, t and noise
+        #shapes are x_t: batchsize, channels_labels, depth, height, width, noise: batchsize, channels_labels, depth, height, width, t: indiceies for each image in the batch batchsize
+
         x_t, t, noise = self.model(x=x_start, pred_type="q_sample")
+
+        #we denoise the label, here we pass the noised label in, the image, and the timesteps t
+        #1. use a Unet Encoder to get the embeddings
+            # U net encoder has spatial dims = 3, in_channels = number_modalities, out_channels = number_targets, features = [64, 64, 128, 256, 512, 64]
+            # we get embeddings with 
+        #2. use a U net that accepts this embeddings; inputs are images and noised image xt
+            # U net decoder has spatial dims = 3, in_channels = number_modalities + number targets, out_channels = number_targets, features = [64, 64, 128, 256, 512, 64]
         pred_xstart = self.model(x=x_t, step=t, image=image, pred_type="denoise")
 
+
+        #we predict various losses between our denoised label and the original label
         loss_dice = self.dice_loss(pred_xstart, label)
         loss_bce = self.bce(pred_xstart, label)
 
@@ -125,6 +157,11 @@ class BraTSTrainer(Trainer): #Implemeents the custom training loop for the BraTS
         return loss 
  
     def get_input(self, batch):
+        #now the image has shape 2,4,96,96,96
+        #now the label has shape 2,3,96,96,96
+
+        #each channel in the label is a binary mask for the corresponding class
+
         image = batch["image"]
         label = batch["label"]
        
@@ -182,6 +219,7 @@ class BraTSTrainer(Trainer): #Implemeents the custom training loop for the BraTS
 if __name__ == "__main__":
 
     train_ds, val_ds, test_ds = get_loader_brats(data_dir=Path(data_dir), batch_size=batch_size, fold=0)
+    print("we are here")
     
     trainer = BraTSTrainer(env_type=env,
                             max_epochs=max_epoch,
