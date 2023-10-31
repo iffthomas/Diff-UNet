@@ -247,15 +247,20 @@ class Trainer:
         else :
             print("not support env_type")
             exit(0)
+        
 
+        #load in the data with the train_loader and val_loader
         train_loader = self.get_dataloader(train_dataset, shuffle=True, batch_size=self.batch_size)
         if val_dataset is not None:
             val_loader = self.get_dataloader(val_dataset, shuffle=False, batch_size=1, train=False)
         else :
             val_loader = None 
-            
+        
+        #iterate over each epoch
         for epoch in range(0, self.max_epochs):
             self.epoch = epoch 
+
+            #dont quite get this but its ok
             if self.ddp:
                 train_loader.sampler.set_epoch(epoch)
                 torch.distributed.barrier()

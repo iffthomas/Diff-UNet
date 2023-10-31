@@ -129,6 +129,7 @@ dmypy.json
 .pyre/
 
 BraTS2020/datasets/
+BraTS2020/logs_brats/
 
 
 ```

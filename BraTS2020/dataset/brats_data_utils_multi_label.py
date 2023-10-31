@@ -10,6 +10,7 @@
 # limitations under the License.
 from sklearn.model_selection import KFold  ## K折交叉验证
 
+
 import os
 import json
 import math
@@ -83,7 +84,7 @@ class PretrainDataset(Dataset):
 
     def read_data(self, data_path):
         
-        file_identifizer = data_path.split("/")[-1].split("_")[-1]
+        file_identifizer = data_path.split("\\")[-1].split("_")[-1]
         image_paths = [
             os.path.join(data_path, f"BraTS20_Training_{file_identifizer}_t1.nii.gz"),
             os.path.join(data_path, f"BraTS20_Training_{file_identifizer}_flair.nii.gz"),
@@ -95,6 +96,9 @@ class PretrainDataset(Dataset):
         image_data = [sitk.GetArrayFromImage(sitk.ReadImage(p)) for p in image_paths]
         seg_data = sitk.GetArrayFromImage(sitk.ReadImage(seg_path))
 
+
+        #we have 4 modalities here, shape is channel, depth, height, width for image_data¨ eg (4, 155, 240, 240)
+        #we also expand the seg_data with one more channel that we have it channel, depth, height, width (1, 155, 240, 240)
         image_data = np.array(image_data).astype(np.float32)
         seg_data = np.expand_dims(np.array(seg_data).astype(np.int32), axis=0)
         return {
