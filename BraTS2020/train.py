@@ -171,6 +171,8 @@ class BraTSTrainer(Trainer): #Implemeents the custom training loop for the BraTS
     def validation_step(self, batch):
         image, label = self.get_input(batch)    
         
+
+        #TODO: documentate this
         output = self.window_infer(image, self.model, pred_type="ddim_sample")
 
         output = torch.sigmoid(output)
